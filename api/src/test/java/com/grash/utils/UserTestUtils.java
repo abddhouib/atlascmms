@@ -1,11 +1,10 @@
 package com.grash.utils;
 
 import com.grash.dto.SignupSuccessResponse;
+import com.grash.dto.UserInvitationDTO;
 import com.grash.dto.UserSignupRequest;
 import com.grash.model.OwnUser;
 import com.grash.model.Role;
-import com.grash.model.enums.BusinessType;
-import com.grash.model.enums.Language;
 import com.grash.model.enums.PermissionEntity;
 import com.grash.model.enums.PermissionType;
 import com.grash.security.CustomUserDetail;
@@ -105,7 +104,9 @@ public class UserTestUtils {
 
     public OwnUser generateWithRole(OwnUser inviter, Role role) {
         String invitedUserEmail = TestHelper.generateEmail();
-        userService.invite(invitedUserEmail, role, inviter);
+        userService.invite(inviter, UserInvitationDTO.builder()
+                .emails(Arrays.asList(invitedUserEmail))
+                .role(role).build());
 
         UserSignupRequest userSignupRequest = UserSignupRequest.builder()
                 .role(role)

@@ -14,7 +14,7 @@ import java.util.List;
 @Data
 public class UserResponseDTO {
 
-    private Integer id;
+    private Long id;
     @ApiModelProperty(position = 1)
     private String username;
     @ApiModelProperty(position = 2)

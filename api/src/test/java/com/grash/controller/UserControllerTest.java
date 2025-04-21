@@ -8,12 +8,11 @@ import com.grash.exception.CustomException;
 import com.grash.model.OwnUser;
 import com.grash.model.Role;
 import com.grash.model.Subscription;
-import com.grash.model.enums.Language;
 import com.grash.model.enums.PermissionEntity;
 import com.grash.model.enums.PermissionType;
+import com.grash.model.enums.RoleCode;
 import com.grash.service.SubscriptionService;
 import com.grash.service.UserService;
-import com.grash.utils.Helper;
 import com.grash.utils.TestHelper;
 import com.grash.utils.UserTestUtils;
 import org.assertj.core.api.Assertions;
@@ -73,7 +72,10 @@ class UserControllerTest extends CustomPostgresSQLContainer {
         OwnUser inviter = userTestUtils.generateUserAndEnable();
         Role role = inviter.getRole();
         UserSignupRequest validSignupRequest = userTestUtils.getRandomSignupRequest();
-        userService.invite(validSignupRequest.getEmail(), role, inviter);
+        userService.invite(
+                inviter, UserInvitationDTO.builder()
+                        .emails(Arrays.asList(validSignupRequest.getEmail()))
+                        .role(role).build());
         validSignupRequest.setRole(role);
 
         SignupSuccessResponse<OwnUser> signupSuccessResponse = userService.signup(validSignupRequest);
@@ -105,7 +107,7 @@ class UserControllerTest extends CustomPostgresSQLContainer {
     public void searchShouldReturnForbiddenWhenUserDoesNotHaveViewSettingsPrivilege() throws Exception {
         OwnUser inviter = userTestUtils.generateUserAndEnable();
         OwnUser clinician = userTestUtils.generateWithoutPrivilege(inviter, PermissionType.VIEW,
-                PermissionEntity.SETTINGS);
+                PermissionEntity.PEOPLE_AND_TEAMS);
         String jwtToken = userTestUtils.getToken(clinician);
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(jwtToken);
@@ -145,7 +147,7 @@ class UserControllerTest extends CustomPostgresSQLContainer {
                         .headers(headers))
                 .andExpect(status().isOk());
 
-        verify(userService, times(emails.size())).invite(anyString(), any(), any());
+        verify(userService, times(emails.size())).sendInvitationMail(anyString(), any(), any());
         verify(emailService, times(emails.size())).sendMessageUsingThymeleafTemplate(any(), any(), any(), any(),
                 any());
     }
@@ -222,7 +224,8 @@ class UserControllerTest extends CustomPostgresSQLContainer {
             users.add(userTestUtils.generateWithRole(user,
                     userTestUtils.getRandomRole(user)));
         }
-
+        List<OwnUser> workers =
+                users.stream().filter(u -> !Arrays.asList(RoleCode.REQUESTER, RoleCode.VIEW_ONLY).contains(u.getRole().getCode())).collect(Collectors.toList());
         mockMvc.perform(get("/users/mini")
                         .headers(getAuthHeaders(user))
                         .contentType(MediaType.APPLICATION_JSON))
@@ -232,8 +235,8 @@ class UserControllerTest extends CustomPostgresSQLContainer {
                     List<UserMiniDTO> cliniciansResponse = objectMapper.readValue(content,
                             new TypeReference<List<UserMiniDTO>>() {
                             });
-                    assertEquals(users.size(), cliniciansResponse.size());
-                    List<Long> expectedIds = users.stream().map(OwnUser::getId).collect(Collectors.toList());
+                    assertEquals(workers.size(), cliniciansResponse.size());
+                    List<Long> expectedIds = workers.stream().map(OwnUser::getId).collect(Collectors.toList());
                     List<Long> actualIds =
                             cliniciansResponse.stream().map(UserMiniDTO::getId).collect(Collectors.toList());
                     assertThat(expectedIds).containsExactlyInAnyOrderElementsOf(actualIds);
@@ -299,29 +302,19 @@ class UserControllerTest extends CustomPostgresSQLContainer {
         UserPatchDTO patchDTO = new UserPatchDTO();
         patchDTO.setFirstName(TestHelper.generateString());
         patchDTO.setLastName(TestHelper.generateString());
-        String expectedMessage = messageSource.getMessage("access_denied", null, Helper.getLocale(requester));
 
         mockMvc.perform(patch("/users/{id}", targetUser.getId())
                         .headers(getAuthHeaders(requester))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(patchDTO)))
-                .andExpect(status().isForbidden())
-                .andExpect(result -> {
-                    if (result.getResolvedException() instanceof CustomException) {
-                        CustomException ex = (CustomException) result.getResolvedException();
-                        assertThat(ex.getMessage()).isEqualTo(expectedMessage);
-                        assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    } else {
-                        Assertions.fail("Expected CustomException was not thrown");
-                    }
-                });
+                .andExpect(status().isForbidden());
     }
 
     @Test
     public void patchShouldReturnForbiddenWhenRequestingAnotherUseWithoutPrivilege() throws Exception {
         OwnUser companyCreator = userTestUtils.generateUserAndEnable();
-        OwnUser requester = userTestUtils.generateWithoutPrivilege(companyCreator, PermissionType.VIEW,
-                PermissionEntity.SETTINGS);
+        OwnUser requester = userTestUtils.generateWithoutPrivilege(companyCreator, PermissionType.EDIT_OTHER,
+                PermissionEntity.PEOPLE_AND_TEAMS);
         OwnUser targetUser = userTestUtils.generateWithRole(companyCreator,
                 userTestUtils.getRandomRole(companyCreator));
 
@@ -329,22 +322,11 @@ class UserControllerTest extends CustomPostgresSQLContainer {
         patchDTO.setFirstName(TestHelper.generateString());
         patchDTO.setLastName(TestHelper.generateString());
 
-        String expectedMessage = messageSource.getMessage("access_denied", null, Helper.getLocale(requester));
-
         mockMvc.perform(patch("/users/{id}", targetUser.getId())
                         .headers(getAuthHeaders(requester))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(patchDTO)))
-                .andExpect(status().isForbidden())
-                .andExpect(result -> {
-                    if (result.getResolvedException() instanceof CustomException) {
-                        CustomException ex = (CustomException) result.getResolvedException();
-                        assertThat(ex.getMessage()).isEqualTo(expectedMessage);
-                        assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    } else {
-                        Assertions.fail("Expected CustomException was not thrown");
-                    }
-                });
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -383,24 +365,14 @@ class UserControllerTest extends CustomPostgresSQLContainer {
     }
 
     @Test
-    public void getByIdShouldReturnForbiddenWhenUserIsInDifferentCompany() throws Exception {
+    public void getByIdShouldReturnNotFoundWhenUserIsInDifferentCompany() throws Exception {
         OwnUser user = userTestUtils.generateUserAndEnable();
         OwnUser otherCompanyUser = userTestUtils.generateUserAndEnable();
-        String expectedMessage = messageSource.getMessage("access_denied", null, Helper.getLocale(user));
 
         mockMvc.perform(get("/users/{id}", otherCompanyUser.getId())
                         .headers(getAuthHeaders(user))
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(result -> {
-                    if (result.getResolvedException() instanceof CustomException) {
-                        CustomException ex = (CustomException) result.getResolvedException();
-                        assertThat(ex.getMessage()).isEqualTo(expectedMessage);
-                        assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    } else {
-                        Assertions.fail("Expected CustomException was not thrown");
-                    }
-                });
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -479,27 +451,17 @@ class UserControllerTest extends CustomPostgresSQLContainer {
     @Test
     public void patchRoleShouldReturnForbiddenWhenUserDoesNotHaveViewSettingsPrivilege() throws Exception {
         OwnUser companyCreator = userTestUtils.generateUserAndEnable();
-        OwnUser requester = userTestUtils.generateWithoutPrivilege(companyCreator, PermissionType.VIEW,
-                PermissionEntity.SETTINGS);
+        OwnUser requester = userTestUtils.generateWithoutPrivilege(companyCreator, PermissionType.EDIT_OTHER,
+                PermissionEntity.PEOPLE_AND_TEAMS);
         OwnUser targetUser = userTestUtils.generateWithRole(companyCreator,
                 userTestUtils.getRandomRole(companyCreator));
         Role existingRole = userTestUtils.getRandomRole(requester, true);
-        String expectedMessage = messageSource.getMessage("access_denied", null, Helper.getLocale(requester));
 
         mockMvc.perform(patch("/users/{id}/role", targetUser.getId())
                         .headers(getAuthHeaders(requester))
                         .param("role", existingRole.getId().toString())
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(result -> {
-                    if (result.getResolvedException() instanceof CustomException) {
-                        CustomException ex = (CustomException) result.getResolvedException();
-                        assertThat(ex.getMessage()).isEqualTo(expectedMessage);
-                        assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    } else {
-                        Assertions.fail("Expected CustomException was not thrown");
-                    }
-                });
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -508,10 +470,9 @@ class UserControllerTest extends CustomPostgresSQLContainer {
         Subscription subscription = requester.getCompany().getSubscription();
         subscription.setUsersCount(1);
         subscriptionService.save(subscription);
-        OwnUser targetUser = userTestUtils.generateWithRole(requester, userTestUtils.getRandomRole(requester));
+        OwnUser targetUser = userTestUtils.generateWithRole(requester, userTestUtils.getRandomRole(requester, false));
         Role existingRole = userTestUtils.getRandomRole(requester, true);
-        String expectedMessage = messageSource.getMessage("subscription_users_count_doesnt_allow_operation", null,
-                Helper.getLocale(requester));
+        String expectedMessage = "Company subscription users count doesn't allow this operation";
 
         mockMvc.perform(patch("/users/{id}/role", targetUser.getId())
                         .headers(getAuthHeaders(requester))

@@ -22,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import springfox.documentation.annotations.ApiIgnore;
 
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/users")
 @Api(tags = "user")
 @RequiredArgsConstructor
+@Transactional
 public class UserController {
 
     private final UserService userService;
@@ -60,21 +62,8 @@ public class UserController {
             @ApiResponse(code = 403, message = "Access denied"),
             @ApiResponse(code = 404, message = "TeamCategory not found")})
     public SuccessResponse invite(@RequestBody UserInvitationDTO invitation, @ApiIgnore @CurrentUser OwnUser user) {
-        if (user.getRole().getCreatePermissions().contains(PermissionEntity.PEOPLE_AND_TEAMS)) {
-            int companyUsersCount = userService.findByCompany(user.getCompany().getId()).size();
-            Optional<Role> optionalRole = roleService.findById(invitation.getRole().getId());
-            if (optionalRole.isPresent() && user.getCompany().getCompanySettings().getId().equals(optionalRole.get().getCompanySettings().getId())) {
-                if (companyUsersCount + invitation.getEmails().size() <= user.getCompany().getSubscription().getUsersCount() || !optionalRole.get().isPaid()) {
-                    invitation.getEmails().forEach(email ->
-                            userService.invite(email, optionalRole.get(), user)
-                    );
-                    return new SuccessResponse(true, "Users have been invited");
-                } else
-                    throw new CustomException("Your current subscription doesn't allow you to invite that many users"
-                            , HttpStatus.NOT_ACCEPTABLE);
-
-            } else throw new CustomException("Not found", HttpStatus.NOT_FOUND);
-        } else throw new CustomException("Access denied", HttpStatus.FORBIDDEN);
+        userService.invite(user, invitation);
+        return new SuccessResponse(true, "Users have been invited");
     }
 
     @GetMapping("/mini")
@@ -118,10 +107,10 @@ public class UserController {
                     requester.getRole().getEditOtherPermissions().contains(PermissionEntity.PEOPLE_AND_TEAMS)) {
                 return userMapper.toResponseDto(userService.update(id, userReq));
             } else {
-                throw new CustomException("You don't have permission", HttpStatus.NOT_ACCEPTABLE);
+                throw new CustomException("You don't have permission", HttpStatus.FORBIDDEN);
             }
         } else {
-            throw new CustomException("Can't get someone else's user", HttpStatus.NOT_ACCEPTABLE);
+            throw new CustomException("Can't get someone else's user", HttpStatus.FORBIDDEN);
         }
 
     }
@@ -157,16 +146,22 @@ public class UserController {
         if (optionalUserToPatch.isPresent() && optionalRole.isPresent() && optionalRole.get().getCompanySettings().getId().equals(requester.getCompany().getCompanySettings().getId())) {
             OwnUser userToPatch = optionalUserToPatch.get();
             if (requester.getRole().getEditOtherPermissions().contains(PermissionEntity.PEOPLE_AND_TEAMS)) {
-                int usersCount =
+                Role role = optionalRole.get();
+                int currentPaidUsersCount =
                         (int) userService.findByCompany(requester.getCompany().getId()).stream().filter(OwnUser::isEnabledInSubscriptionAndPaid).count();
-                if (usersCount <= requester.getCompany().getSubscription().getUsersCount()) {
-                    userToPatch.setRole(optionalRole.get());
+
+                if (role.isPaid() && !userToPatch.isEnabledInSubscriptionAndPaid()) {
+                    currentPaidUsersCount++;
+                }
+                if (currentPaidUsersCount <= requester.getCompany().getSubscription().getUsersCount()) {
+                    userToPatch.setEnabledInSubscription(true);
+                    userToPatch.setRole(role);
                     return userMapper.toResponseDto(userService.save(userToPatch));
                 } else
                     throw new CustomException("Company subscription users count doesn't allow this operation",
                             HttpStatus.NOT_ACCEPTABLE);
             } else {
-                throw new CustomException("You don't have permission", HttpStatus.NOT_ACCEPTABLE);
+                throw new CustomException("You don't have permission", HttpStatus.FORBIDDEN);
             }
         } else {
             throw new CustomException("User or role not found", HttpStatus.NOT_FOUND);

@@ -2,13 +2,11 @@ package com.grash.service;
 
 import com.grash.advancedsearch.SearchCriteria;
 import com.grash.advancedsearch.SpecificationBuilder;
-import com.grash.dto.SignupSuccessResponse;
-import com.grash.dto.SuccessResponse;
-import com.grash.dto.UserPatchDTO;
-import com.grash.dto.UserSignupRequest;
+import com.grash.dto.*;
 import com.grash.exception.CustomException;
 import com.grash.mapper.UserMapper;
 import com.grash.model.*;
+import com.grash.model.enums.PermissionEntity;
 import com.grash.model.enums.RoleCode;
 import com.grash.repository.UserRepository;
 import com.grash.repository.VerificationTokenRepository;
@@ -254,7 +252,24 @@ public class UserService {
                     HttpStatus.NOT_ACCEPTABLE);
     }
 
-    public void invite(String email, Role role, OwnUser inviter) {
+    public void invite(OwnUser inviter, UserInvitationDTO invitation) {
+        if (inviter.getRole().getCreatePermissions().contains(PermissionEntity.PEOPLE_AND_TEAMS)) {
+            int companyUsersCount = findByCompany(inviter.getCompany().getId()).size();
+            Optional<Role> optionalRole = roleService.findById(invitation.getRole().getId());
+            if (optionalRole.isPresent() && inviter.getCompany().getCompanySettings().getId().equals(optionalRole.get().getCompanySettings().getId())) {
+                if (companyUsersCount + invitation.getEmails().size() <= inviter.getCompany().getSubscription().getUsersCount() || !optionalRole.get().isPaid()) {
+                    invitation.getEmails().forEach(email ->
+                            sendInvitationMail(email, optionalRole.get(), inviter)
+                    );
+                } else
+                    throw new CustomException("Your current subscription doesn't allow you to invite that many users"
+                            , HttpStatus.NOT_ACCEPTABLE);
+
+            } else throw new CustomException("Not found", HttpStatus.NOT_FOUND);
+        } else throw new CustomException("Access denied", HttpStatus.FORBIDDEN);
+    }
+
+    public void sendInvitationMail(String email, Role role, OwnUser inviter) {
         throwIfEmailNotificationsNotEnabled();
         if (!userRepository.existsByEmailIgnoreCase(email) && Helper.isValidEmailAddress(email)) {
             userInvitationService.create(new UserInvitation(email, role));
