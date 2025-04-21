@@ -54,11 +54,11 @@ public class AuthController {
             @ApiResponse(code = 400, message = "Something went wrong"),
             @ApiResponse(code = 422, message = "Invalid credentials")
     })
-    public ResponseEntity<AuthResponse> login(
+    public AuthResponse login(
             @ApiParam("AuthLoginRequest") @Valid @RequestBody UserLoginRequest userLoginRequest) {
         AuthResponse authResponse = new AuthResponse(userService.signin(userLoginRequest.getEmail().toLowerCase(),
                 userLoginRequest.getPassword(), userLoginRequest.getType()));
-        return new ResponseEntity<>(authResponse, HttpStatus.OK);
+        return authResponse;
     }
 
     @PostMapping(
@@ -66,12 +66,7 @@ public class AuthController {
             produces = {
                     MediaType.APPLICATION_JSON_VALUE
             })
-    @ApiOperation(value = "${AuthController.signup}")
-    @ApiResponses(value = {//
-            @ApiResponse(code = 400, message = "Something went wrong"), //
-            @ApiResponse(code = 403, message = "Access denied"), //
-            @ApiResponse(code = 422, message = "Username is already in use")})
-    public SuccessResponse signup(@ApiParam("Signup User") @Valid @RequestBody UserSignupRequest user) {
+    public SignupSuccessResponse<OwnUser> signup(@ApiParam("Signup User") @Valid @RequestBody UserSignupRequest user) {
         return userService.signup(user);
     }
 
@@ -174,7 +169,7 @@ public class AuthController {
             return ResponseEntity.ok(new SuccessResponse(true, "Password changed successfully"));
         } else {
             return new ResponseEntity(new SuccessResponse(false, "Bad credentials"),
-                    HttpStatus.NOT_ACCEPTABLE);
+                    HttpStatus.FORBIDDEN);
         }
     }
 

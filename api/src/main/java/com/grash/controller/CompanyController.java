@@ -51,14 +51,15 @@ public class CompanyController {
             @ApiResponse(code = 500, message = "Something went wrong"), //
             @ApiResponse(code = 403, message = "Access denied"), //
             @ApiResponse(code = 404, message = "Company not found")})
-    public Company patch(@ApiParam("Company") @Valid @RequestBody CompanyPatchDTO company, @ApiParam("id") @PathVariable("id") Long id,
+    public Company patch(@ApiParam("Company") @Valid @RequestBody CompanyPatchDTO company,
+                         @ApiParam("id") @PathVariable("id") Long id,
                          HttpServletRequest req) {
         OwnUser user = userService.whoami(req);
         Optional<Company> optionalCompany = companyService.findById(id);
 
         if (optionalCompany.isPresent()) {
             Company savedCompany = optionalCompany.get();
-            if (!user.getRole().getViewPermissions().contains(PermissionEntity.SETTINGS))
+            if (!(user.getRole().getViewPermissions().contains(PermissionEntity.SETTINGS) && user.getCompany().getId().equals(id)))
                 throw new CustomException("Access denied", HttpStatus.FORBIDDEN);
             return companyService.update(id, company);
         } else throw new CustomException("Company not found", HttpStatus.NOT_FOUND);

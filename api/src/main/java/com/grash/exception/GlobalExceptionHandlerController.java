@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -64,6 +65,13 @@ public class GlobalExceptionHandlerController {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<SuccessResponse> handleMethodArgumentNotValidException(MethodArgumentNotValidException ex) {
         return new ResponseEntity<>(new SuccessResponse(false, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<SuccessResponse> handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
+        String errorMessage = String.format("Missing required parameter: %s", ex.getParameterName());
+        return new ResponseEntity<>(new SuccessResponse(false, errorMessage), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(Exception.class)

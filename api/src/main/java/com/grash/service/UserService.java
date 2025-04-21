@@ -2,6 +2,7 @@ package com.grash.service;
 
 import com.grash.advancedsearch.SearchCriteria;
 import com.grash.advancedsearch.SpecificationBuilder;
+import com.grash.dto.SignupSuccessResponse;
 import com.grash.dto.SuccessResponse;
 import com.grash.dto.UserPatchDTO;
 import com.grash.dto.UserSignupRequest;
@@ -9,7 +10,6 @@ import com.grash.exception.CustomException;
 import com.grash.mapper.UserMapper;
 import com.grash.model.*;
 import com.grash.model.enums.RoleCode;
-import lombok.extern.slf4j.Slf4j;
 import com.grash.repository.UserRepository;
 import com.grash.repository.VerificationTokenRepository;
 import com.grash.security.JwtTokenProvider;
@@ -80,7 +80,7 @@ public class UserService {
             Authentication authentication =
                     authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
             if (authentication.getAuthorities().stream().noneMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_" + type.toUpperCase()))) {
-                throw new CustomException("Invalid credentials", HttpStatus.FORBIDDEN);
+                throw new CustomException("Invalid credentials", HttpStatus.UNAUTHORIZED);
             }
             Optional<OwnUser> optionalUser = userRepository.findByEmailIgnoreCase(email);
             OwnUser user = optionalUser.get();
@@ -88,20 +88,20 @@ public class UserService {
             userRepository.save(user);
             return jwtTokenProvider.createToken(email, Collections.singletonList(user.getRole().getRoleType()));
         } catch (AuthenticationException e) {
-            throw new CustomException("Invalid credentials", HttpStatus.FORBIDDEN);
+            throw new CustomException("Invalid credentials", HttpStatus.UNAUTHORIZED);
         }
     }
 
-    private SuccessResponse enableAndReturnToken(OwnUser user, boolean sendEmailToSuperAdmins,
-                                                 UserSignupRequest userSignupRequest) {
+    private SignupSuccessResponse<OwnUser> enableAndReturnToken(OwnUser user, boolean sendEmailToSuperAdmins,
+                                                                UserSignupRequest userSignupRequest) {
         user.setEnabled(true);
         userRepository.save(user);
         if (sendEmailToSuperAdmins) sendRegistrationMailToSuperAdmins(user, userSignupRequest);
-        return new SuccessResponse(true, jwtTokenProvider.createToken(user.getEmail(),
-                Collections.singletonList(user.getRole().getRoleType())));
+        return new SignupSuccessResponse<>(true, jwtTokenProvider.createToken(user.getEmail(),
+                Collections.singletonList(user.getRole().getRoleType())), user);
     }
 
-    public SuccessResponse signup(UserSignupRequest userReq) {
+    public SignupSuccessResponse<OwnUser> signup(UserSignupRequest userReq) {
         OwnUser user = userMapper.toModel(userReq);
         user.setEmail(user.getEmail().toLowerCase());
         if (userRepository.existsByEmailIgnoreCase(user.getEmail())) {
@@ -168,8 +168,8 @@ public class UserService {
             }
             userRepository.save(user);
             sendRegistrationMailToSuperAdmins(user, userReq);
-            return new SuccessResponse(true, "Successful registration. Check your mailbox to activate your " +
-                    "account");
+            return new SignupSuccessResponse<>(true, "Successful registration. Check your mailbox to activate your " +
+                    "account", null);
         }
 
     }

@@ -4,10 +4,12 @@ import com.grash.model.File;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import javax.validation.constraints.NotNull;
+
 @Data
 @NoArgsConstructor
 public class CompanyPatchDTO {
-
+    @NotNull
     private String name;
     private String address;
     private String phone;
