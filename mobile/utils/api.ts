@@ -1,5 +1,5 @@
 import { getApiUrl } from '../config';
-import { AsyncStorage } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 async function api<T>(url: string, options): Promise<T> {
   return fetch(url, { headers: await authHeader(false), ...options }).then(

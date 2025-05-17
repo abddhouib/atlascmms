@@ -10,7 +10,8 @@ import {
 import { OwnUser, UserResponseDTO } from '../models/user';
 import api, { authHeader } from '../utils/api';
 import { verify } from '../utils/jwt';
-import { Alert, AppState, AsyncStorage, Linking, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert, AppState, Linking, Platform } from 'react-native';
 import PropTypes from 'prop-types';
 import {
   getCompanySettings,

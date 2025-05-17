@@ -15,7 +15,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   notification: {
     icon: './assets/images/notification.png'
   },
-  sdkVersion: '47.0.0',
   splash: {
     image: './assets/images/splash.png',
     resizeMode: 'contain',

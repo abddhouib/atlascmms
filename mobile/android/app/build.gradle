@@ -89,7 +89,7 @@ project.ext.react = [
         composeSourceMapsPath: "${reactNativeRoot}/scripts/compose-source-maps.js",
 ]
 
-apply from: new File(reactNativeRoot, "react.gradle")
+//apply from: new File(reactNativeRoot, "react.gradle")
 
 /**
  * Set this to true to create two separate APKs instead of one:

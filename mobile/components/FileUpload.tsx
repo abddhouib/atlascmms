@@ -1,20 +1,26 @@
 import { View } from './Themed';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { DocumentResult } from 'expo-document-picker';
 import * as React from 'react';
-import * as FileSystem from 'expo-file-system';
 import { useContext, useRef, useState } from 'react';
+import * as FileSystem from 'expo-file-system';
 import * as Permissions from 'expo-permissions';
-import { Alert, Image, PermissionsAndroid, ScrollView, Text, TouchableOpacity } from 'react-native';
-import { Divider, IconButton, List, useTheme } from 'react-native-paper';
+import {
+  Alert,
+  Image,
+  PermissionsAndroid,
+  ScrollView,
+  Text,
+  TouchableOpacity
+} from 'react-native';
+import { IconButton, useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import mime from 'mime';
-import { IconSource } from 'react-native-paper/src/components/Icon';
-import ActionSheet, { ActionSheetRef, SheetManager } from 'react-native-actions-sheet';
+import { ActionSheetRef, SheetManager } from 'react-native-actions-sheet';
 import { CustomSnackBarContext } from '../contexts/CustomSnackBarContext';
-import { files, IFile } from '../models/file';
-
+import { IFile } from '../models/file';
+import { DocumentPickerAsset } from 'expo-document-picker/src/types';
+import { FileInfo } from 'expo-file-system/src/FileSystem.types';
 
 interface OwnProps {
   title: string;
@@ -25,11 +31,11 @@ interface OwnProps {
 }
 
 export default function FileUpload({
-                                     title,
-                                     type,
-                                     multiple,
-                                     onChange
-                                   }: OwnProps) {
+  title,
+  type,
+  multiple,
+  onChange
+}: OwnProps) {
   const theme = useTheme();
   const actionSheetRef = useRef<ActionSheetRef>(null);
   const [images, setImages] = useState<IFile[]>([]);
@@ -80,9 +86,8 @@ export default function FileUpload({
     }
     onChange(files);
   };
-  const getFileInfo = async (fileURI: string) => {
-    const fileInfo = await FileSystem.getInfoAsync(fileURI);
-    return fileInfo;
+  const getFileInfo = async (fileURI: string): Promise<FileInfo> => {
+    return await FileSystem.getInfoAsync(fileURI);
   };
   const isMoreThanTheMB = (fileSize: number, limit: number) => {
     return fileSize / 1024 / 1024 > limit;
@@ -119,9 +124,9 @@ export default function FileUpload({
   };
   const checkSize = async (uri: string) => {
     const fileInfo = await getFileInfo(uri);
-
+    if (!('size' in fileInfo)) return;
     if (!fileInfo?.size) {
-      Alert.alert('Can\'t select this file as the size is unknown.');
+      Alert.alert("Can't select this file as the size is unknown.");
       throw new Error();
     }
     if (isMoreThanTheMB(fileInfo.size, maxFileSize)) {
@@ -135,30 +140,38 @@ export default function FileUpload({
         const { uri } = asset;
         await checkSize(uri);
       }
-      onChangeInternal(result.assets.map((asset) => {
-        const fileName =
-          asset.uri.split('/')[asset.uri.split('/').length - 1];
-        return {
-          uri: asset.uri,
-          name: fileName,
-          type: mime.getType(fileName)
-        };
-      }), 'image');
+      onChangeInternal(
+        result.assets.map((asset) => {
+          const fileName =
+            asset.uri.split('/')[asset.uri.split('/').length - 1];
+          return {
+            uri: asset.uri,
+            name: fileName,
+            type: mime.getType(fileName)
+          };
+        }),
+        'image'
+      );
     }
   };
   const pickFile = async () => {
     const hasPermissions = await checkPermissions();
     if (hasPermissions) {
       let result = await DocumentPicker.getDocumentAsync({});
-      if (result.type !== 'cancel') {
-        await checkSize(result.uri);
-        onChangeInternal([
-          {
-            uri: result.uri,
-            name: result.name,
-            type: mime.getType(result.name)
-          }
-        ], 'file');
+      if (!result.canceled) {
+        const assets: DocumentPickerAsset[] = result.assets;
+        const firstAsset = assets[0];
+        await checkSize(firstAsset.uri);
+        onChangeInternal(
+          [
+            {
+              uri: firstAsset.uri,
+              name: firstAsset.name,
+              type: mime.getType(firstAsset.name)
+            }
+          ],
+          'file'
+        );
       }
     }
   };
@@ -186,7 +199,10 @@ export default function FileUpload({
               <IconButton
                 style={{ position: 'absolute', top: 10, right: 10 }}
                 onPress={() => {
-                  onChangeInternal(images.filter((item) => item.uri !== image.uri), 'image');
+                  onChangeInternal(
+                    images.filter((item) => item.uri !== image.uri),
+                    'image'
+                  );
                 }}
                 icon={'close-circle'}
                 iconColor={theme.colors.error}
@@ -194,12 +210,14 @@ export default function FileUpload({
             </View>
           ))}
         {type === 'file' && !!files.length && (
-          <View style={{
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
+          <View
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
             <Text style={{ color: theme.colors.primary }}>{files[0].name}</Text>
             <IconButton
               onPress={() => {
@@ -207,7 +225,8 @@ export default function FileUpload({
               }}
               icon={'close-circle'}
               iconColor={theme.colors.error}
-            /></View>
+            />
+          </View>
         )}
       </ScrollView>
     </View>
